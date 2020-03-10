@@ -12,8 +12,8 @@ operation_block_array * create_table(int size)
     main_array = (operation_block_array *) 
         calloc(1, sizeof(operation_block_array));
     main_array -> size = size;
-    main_array -> block_array = (operation_block *) 
-        calloc(size, sizeof(operation_block));
+    main_array -> block_array = (operation_block **) 
+        calloc(size, sizeof(operation_block *));
     return main_array;
 }
 
@@ -45,7 +45,7 @@ files_pair * make_pair(char * argument)
 }
 
 
-operation_block * prepare_block(file_name)
+operation_block * prepare_block(char * file_name)
 {
     FILE * file_pointer;
 
@@ -53,16 +53,15 @@ operation_block * prepare_block(file_name)
 
     if (file_pointer == NULL) 
     {
-        printf("File %s can't be openned right now", file_pointer);
+        printf("File %s can't be openned right now", file_name);
         return NULL;
     }
 
     char * line = NULL;
     size_t line_size = 0;
+    decisive_operation * operation;
 
-    int left_size = 0;
-    int right_size = 0;
-    int should_skip = -1;
+
 
     operation_block * block;
     block = (operation_block *)
@@ -75,30 +74,64 @@ operation_block * prepare_block(file_name)
     {
         if (isdigit(line[0]))
         {
-            int i = 0;
-            for(;i < line_size && !islower(line[i]); i++)
+            block->number_of_decisive_blocks++;
+
+            if (block->number_of_decisive_blocks == 1)
             {
-                if(isdigit(line[i])) left_size++;
+                block->decisive_operations_array = (decisive_operation **)
+                    calloc(block->number_of_decisive_blocks, sizeof(decisive_operation *));
+                operation = (decisive_operation *)
+                    calloc(1, sizeof(decisive_operation));
+
+                operation->operation = (char *) 
+                    calloc(strlen(line),sizeof(char));
+                operation->length = strlen(line);
+                strcpy(operation->operation, line);
             }
-
-            i++;
-
-            for(;i < line_size; i++)
+            else
             {
-                if(isdigit(line[i])) right_size++;
+                block->decisive_operations_array = (decisive_operation **) 
+                    realloc(block->decisive_operations_array, block->number_of_decisive_blocks);
+
+                block->decisive_operations_array[block->number_of_decisive_blocks-2] = operation;
+                
+                operation = (decisive_operation *)
+                    calloc(1, sizeof(decisive_operation));
+
+                operation->length = strlen(line);
+
+                operation->operation = (char *)
+                    calloc(strlen(line),sizeof(char));
+                strcpy(operation->operation,line);    
             }
-
-            if (left_size > 1 || right_size > 1) should_skip = 0;
-
-            block->number_of_decisive_blocks
-
-
+        }
+        else
+        {
+            operation->operation = (char *)
+                realloc(operation->operation, strlen(operation->operation) + strlen(line));
+            operation->length = operation->length + strlen(line);
+            strcat(operation->operation, line);
 
         }
     }
-    
-    
 
+    block->decisive_operations_array[block->number_of_decisive_blocks-1] = operation;
+
+    fclose(file_pointer);
+    operation = NULL;
+    free(line);
+
+    char * remove;
+    remove =  (char *) 
+            calloc(6 + strlen(file_name),(sizeof(char)));
+            
+    strcpy(remove, "rm -f ");
+    strcat(remove, file_name);
+
+    system(remove);
+    free(remove);
+    
+    return block;
 
 }
 
@@ -141,11 +174,10 @@ operation_block_array * compare_pairs(int n , ...)
 
         operation_block * new_op_block;
         new_op_block = prepare_block(file_name);
+        op_blocks->block_array[i] = new_op_block;
 
     }
 
-    return NULL;
+    return op_blocks;
 
 }
-
-// void compare_pairs()

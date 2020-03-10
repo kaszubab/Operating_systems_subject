@@ -10,26 +10,21 @@
 typedef struct decisive_operation 
 {
     int length;
-    char * operation
+    char * operation;
 } decisive_operation;
 
 typedef struct operation_block 
 {
     int number_of_decisive_blocks;
-    decisive_operation * decisive_operations_array;
+    decisive_operation ** decisive_operations_array;
 } operation_block;
 
 typedef struct operation_block_array 
 {
     int size;
-    operation_block * block_array;
+    operation_block ** block_array;
 } operation_block_array;
 
-typedef struct files_pair_array 
-{
-    int count;
-    files_pair ** pairs;
-} files_pair_array;
 
 typedef struct files_pair 
 {
