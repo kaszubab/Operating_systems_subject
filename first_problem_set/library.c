@@ -11,6 +11,7 @@ operation_block_array * create_table(int size)
     operation_block_array * main_array;
     main_array = (operation_block_array *) 
         calloc(1, sizeof(operation_block_array));
+    main_array->last_index = -1;
     main_array -> size = size;
     main_array -> block_array = (operation_block **) 
         calloc(size, sizeof(operation_block *));
@@ -44,8 +45,34 @@ files_pair * make_pair(char * argument)
     return pair;
 }
 
+// strtol zwraca long
 
-operation_block * prepare_block(char * file_name)
+files_pair_array * make_sequence(char ** arguments, int arg_len) 
+{
+    files_pair_array * files = (files_pair_array *)
+        calloc(1, sizeof(files_pair_array));
+
+    files ->pairs_array = (files_pair **) calloc(arg_len, sizeof(char *));
+
+    int pos = 0;
+
+    for (int i = 0; i < arg_len; i++)
+    {
+        files_pair * file = make_pair(arguments[i]);
+        if (file != NULL) 
+        {
+            files->pairs_array[pos++] = make_pair(arguments[i]);
+        }
+        
+    }
+
+    files->len = pos;
+
+    return files;
+}
+
+
+int prepare_block(char * file_name, operation_block_array * op_blocks)
 {
     FILE * file_pointer;
 
@@ -54,7 +81,7 @@ operation_block * prepare_block(char * file_name)
     if (file_pointer == NULL) 
     {
         printf("File %s can't be openned right now", file_name);
-        return NULL;
+        return -1;
     }
 
     char * line = NULL;
@@ -131,53 +158,102 @@ operation_block * prepare_block(char * file_name)
     system(remove);
     free(remove);
     
-    return block;
+    op_blocks->block_array[++op_blocks->last_index] = block;
 
+    return op_blocks->last_index;
 }
 
 
-
-operation_block_array * compare_pairs(int n , ...) 
+char * compare_pair(files_pair * file) 
 {
-    va_list arguments;
-    va_start( arguments, n);
-
-    files_pair ** pairs = (files_pair **)
-        calloc(n, sizeof(files_pair *));
-   
-
-    for (int i = 0; i < n; i++) 
-    {
-        pairs[i] = make_pair(va_arg( arguments, char *));
-    }
-
     char * file_name = "tmp";
     char * diff;
 
-    operation_block_array * op_blocks;
-        
-    op_blocks = create_table(n);
-
-    for (int i = 0; i < n; i++) 
-    {
-        diff =  (char *) 
-            calloc(10 + strlen(pairs[i]->file1) + strlen(pairs[i]->file2) + strlen(file_name),(sizeof(char)));
+    diff =  (char *) 
+        calloc(10 + strlen(file->file1) + strlen(file->file2) + strlen(file_name),(sizeof(char)));
             
-        strcat(diff, "diff ");
-        strcat(diff, pairs[i]->file1);
-        strcat(diff, " ");
-        strcat(diff, pairs[i]->file2);
-        strcat(diff, " > ");
-        strcat(diff, file_name);
+    strcat(diff, "diff ");
+    strcat(diff, file->file1);
+    strcat(diff, " ");
+    strcat(diff, file->file2);
+    strcat(diff, " > ");
+    strcat(diff, file_name);
 
-        system(diff);
+    system(diff);
+    free(diff);
 
-        operation_block * new_op_block;
-        new_op_block = prepare_block(file_name);
-        op_blocks->block_array[i] = new_op_block;
+
+    return file_name;
+}
+
+
+
+
+void compare_pairs(operation_block_array * op_blocks, files_pair_array * files) 
+{
+ 
+    char * file_name;
+
+    for (int i = 0; i < files->len; i++) 
+    {
+        file_name = compare_pair(files->pairs_array[i]);
+        
+        prepare_block(file_name, op_blocks);
+        
 
     }
 
-    return op_blocks;
-
 }
+
+int number_of_operations(operation_block_array * arr, int index)
+{
+    return arr->block_array[index]->number_of_decisive_blocks;
+}
+
+
+void remove_block(operation_block_array * arr, int index)
+{
+    operation_block * block = arr->block_array[index];
+    
+    for (int i = 0; i < block->number_of_decisive_blocks; i++) 
+    {
+        free(block->decisive_operations_array[i]->operation);
+    }
+    free(block->decisive_operations_array);
+    free(block);
+
+
+    arr->block_array[index] = NULL;
+    for (int i = index+1; i < arr->size; i++) 
+    {
+        arr->block_array[i-1] = arr->block_array[i];
+    }
+
+    arr->block_array[arr->size-1] = NULL; 
+    arr->last_index--;
+    arr->size--;
+}
+
+void remove_operation(operation_block_array * arr, int operation_index, int block_index)
+{
+    operation_block * block = arr->block_array[block_index];
+    decisive_operation * op =  block->decisive_operations_array[operation_index];
+    
+    free(op->operation);
+    free(op);
+
+    block->decisive_operations_array[operation_index] = NULL;
+
+    for (int i = operation_index+1; i <= block->number_of_decisive_blocks; i++) 
+    {
+        block->decisive_operations_array[i-1] = block->decisive_operations_array[i];
+    }
+
+    block->decisive_operations_array[block->number_of_decisive_blocks] = NULL;
+    block->number_of_decisive_blocks--;
+}
+
+
+
+
+
