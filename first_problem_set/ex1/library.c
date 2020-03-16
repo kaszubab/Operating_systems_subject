@@ -202,7 +202,7 @@ char * compare_pair(files_pair * file)
 
 
 
-int compare_pairs(operation_block_array * op_blocks, files_pair_array * files) 
+void compare_pairs(operation_block_array * op_blocks, files_pair_array * files) 
 {
  
     char * file_name = "tmp";
@@ -215,8 +215,6 @@ int compare_pairs(operation_block_array * op_blocks, files_pair_array * files)
         prepare_block(file_name, op_blocks);
 
     }
-
-    return 1;
 
 }
 
