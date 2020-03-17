@@ -6,6 +6,7 @@
 #include "unistd.h"
 #include "fcntl.h"
 #include "sys/stat.h"
+#include "string.h"
 
 
 #define files_library
