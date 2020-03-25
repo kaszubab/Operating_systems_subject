@@ -4,6 +4,19 @@
 #include "stdlib.h"
 #include "string.h"
 #include "limits.h"
+#include <sys/file.h>
+#include "unistd.h"
+#include "sys/wait.h"
+
+
+typedef struct matrix_sizes
+{
+    int first_matrix_rows;
+    int first_matrix_cols;
+    int second_matrix_rows;
+    int second_matrix_cols;
+} matrix_sizes;
+
 
 
 void print_help()
@@ -60,7 +73,7 @@ int read_file_names(FILE * list, char ** matrices_A, char ** matrices_B, char **
 }
 
 
-void get_sizes( char ** matrices_A, char ** matrices_B, int * sizes, int matrix_count)
+void get_sizes( char ** matrices_A, char ** matrices_B, matrix_sizes * sizes, int matrix_count)
 {
     FILE * first_matrix;
     FILE * second_matrix;
@@ -85,6 +98,17 @@ void get_sizes( char ** matrices_A, char ** matrices_B, int * sizes, int matrix_
             exit(1);
         }
 
+        a_size = 0;
+
+        while(getline(&line, &line_size, first_matrix) >= 0)
+        {
+            a_size++;
+        } 
+
+        sizes[i].first_matrix_rows = a_size;
+
+        fseek(first_matrix, 0, 0);
+
         getline(&line, &line_size, first_matrix);
 
         if ( strtok(line, " ") != NULL) 
@@ -94,6 +118,8 @@ void get_sizes( char ** matrices_A, char ** matrices_B, int * sizes, int matrix_
                 a_size++;
         }
 
+        sizes[i].first_matrix_cols = a_size;
+
         b_size = 0;
 
         while(getline(&line, &line_size, second_matrix) >= 0)
@@ -101,21 +127,33 @@ void get_sizes( char ** matrices_A, char ** matrices_B, int * sizes, int matrix_
             b_size++;
         } 
 
-        if (a_size != b_size)
+        sizes[i].second_matrix_rows = b_size;
+
+        fseek(second_matrix, 0, 0);
+
+        getline(&line, &line_size, second_matrix);
+
+        if ( strtok(line, " ") != NULL) 
+        {
+            b_size = 1;
+            while(strtok(NULL, " ") != NULL) 
+                b_size++;
+        }
+
+        sizes[i].second_matrix_cols = b_size;
+
+
+        if (sizes[i].first_matrix_cols != sizes[i].second_matrix_rows)
         {
             printf("Matrices %s and %s are of imcompatible sizes \n", matrices_A[i], matrices_B[i]);
             exit(1);
-        }
-        else
-        {
-            sizes[i] = a_size;
         }
 
     }   
 
 }
 
-int main(int argc, char ** argv )
+int main(int argc, char ** argv ) 
 {
 
     if (argc < 2)  
@@ -155,8 +193,8 @@ int main(int argc, char ** argv )
     fclose(input_file);
     
     
-    int * matrix_sizes = (int *) calloc(matrix_count, sizeof(int));
-    get_sizes(matrices_A, matrices_B, matrix_sizes, matrix_count);
+    matrix_sizes * mat_sizes = (matrix_sizes *) calloc(matrix_count, sizeof(matrix_sizes));
+    get_sizes(matrices_A, matrices_B, mat_sizes, matrix_count);
     
     
     int process_count = strtol(argv[2], NULL, 0);
@@ -166,29 +204,146 @@ int main(int argc, char ** argv )
 
     double time_to_live = strtod(argv[3],NULL);
 
-    int mode = -1;
+    char * mode = NULL;
 
     if( strcmp(argv[4], "shared") == 0)
     {
-        mode = 0;
+        mode = argv[4];
     }
     else if(strcmp(argv[4],"non_shared") == 0)
     {
-        mode = 1;
+        mode = argv[4];
     }
 
-    if (mode == -1)
+    if (mode == NULL)
     {
         perror("Error parsing mode argument, use --help to get the of available commands");
         exit(1);
     }
 
+    char * temp_name = "temp.txt";
+
+    FILE * tmp = fopen(temp_name,"w");
 
     for (int i = 0; i < process_count; i++)
     {
-        // TODO start process
+        fwrite("1\n", sizeof(char), strlen("1\n"), tmp);
     }
-  
+
+    fwrite("-1\n", sizeof(char), strlen("-1\n"), tmp);
+    fflush(tmp);
+    flock(fileno(tmp), LOCK_UN);
+
+    int len = snprintf(NULL, 0, "%d", process_count)+1;
+    char step[len];
+    snprintf(step, len, "%d", process_count);
+
+
+    for (int i = 0; i < process_count; i++)
+    {
+        if ((workers[i] = fork()) == 0)
+        {
+ 
+            int len = snprintf(NULL, 0, "%d", i)+1;
+            char child_id[len];
+            snprintf(child_id, len, "%d", i);
+
+            len = snprintf(NULL, 0, "%d", mat_sizes[0].first_matrix_rows)+1;
+            char A_rows[len];
+            snprintf(A_rows, len, "%d", mat_sizes[0].first_matrix_rows);
+
+            len = snprintf(NULL, 0, "%d", mat_sizes[0].first_matrix_cols)+1;
+            char A_cols[len];
+            snprintf(A_cols, len, "%d", mat_sizes[0].first_matrix_cols);
+
+            len = snprintf(NULL, 0, "%d", mat_sizes[0].second_matrix_rows)+1;
+            char B_rows[len];
+            snprintf(B_rows, len, "%d", mat_sizes[0].second_matrix_rows);
+
+            len = snprintf(NULL, 0, "%d", mat_sizes[0].second_matrix_cols)+1;
+            char B_cols[len];
+            snprintf(B_cols, len, "%d", mat_sizes[0].second_matrix_cols);
+ 
+            execl("./matrix_multiplier", "./matrix_multiplier", matrices_A[0], matrices_B[0], matrices_C[0], temp_name, child_id, step, mode, A_rows, A_cols, B_rows, B_cols, NULL); 
+        
+        }
+    }
+
+    
+    
+    int sleep_time = 50000; //50 ms
+    int timeout = time_to_live * 1000000;
+    int time = 0;
+    int num_files = 0;
+
+    int multiplications = 0;
+
+    for(int i = 0;i<process_count;i++)
+    {
+        while(time < timeout)
+        {
+            if(waitpid(workers[i], &multiplications, WNOHANG) != 0)
+            {
+                printf("Process with PID %d performed %d multiplications\n", workers[i], WEXITSTATUS(multiplications));
+                break;
+            } 
+            else 
+            {
+                usleep(sleep_time);
+                time += sleep_time;
+            }
+        }
+
+        if(time >= timeout)
+        {
+            flock(fileno(tmp), LOCK_EX);
+            fseek(tmp, 2 * i *sizeof(char), 0);
+            fprintf(tmp, "0\n");
+            fflush(tmp);
+            flock(fileno(tmp), LOCK_UN);
+
+            waitpid(workers[i], &multiplications, 0);
+            printf("Process with PID %d performed %d multiplications before being killed\n", workers[i], WEXITSTATUS(multiplications));
+        }
+
+        num_files += WEXITSTATUS(multiplications);
+    }
+
+    
+
+    if(strcmp(mode, "non_shared") == 0)
+    {
+        FILE * result_file = fopen(matrices_C[0], "w+");
+
+        if(fork() == 0)
+        {
+            char** params = (char**) calloc(num_files+4, sizeof(char*));
+            params[0] = "/usr/bin/paste"; 
+            params[1] = "-d";
+            params[2] = " ";
+
+            if(result_file == NULL)
+            {
+                printf("Error opening output file\n");
+                exit(1);
+            }
+
+            dup2(fileno(result_file), 1);
+            int len;
+            for(int i = 0;i<num_files; i++)
+            {
+                len = snprintf(NULL, 0, "tmp/%d", i)+1;
+                params[i+3] = calloc(len, sizeof(char));
+                snprintf(params[i+3], len, "tmp/%d", i);
+            }
+
+            params[num_files+3] = NULL;
+
+            execv(params[0], params);
+            exit(0);
+        }
+        wait(0);
+    }
 
     return 0;
 }

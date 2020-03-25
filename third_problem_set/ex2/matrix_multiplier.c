@@ -97,7 +97,12 @@ int main(int argc, char ** argv) // matrix_multiplier matrix_A matrix_B matrix_C
 
     if(argc != 12)
     {
-        printf("Wrong number of arguments");
+
+        for (int i = 0; i < argc; i++)
+        {
+            printf("%s \n", argv[i]);
+        }
+        printf("Wrong number of arguments %d", argc);
         exit(0);
     }
   
@@ -160,15 +165,22 @@ int main(int argc, char ** argv) // matrix_multiplier matrix_A matrix_B matrix_C
     }
 
 
+
     for (int i = index; i  < B_columns; i += step)
     {
+
+
         check_if_killed(temp_descriptor, temp_file, index);
         multiply_matrix_by_column(matrix_A, matrix_B, result_column, i,A_rows,A_columns,B_rows,B_columns);
 
         int last_column = -2;
 
+
         while(last_column != i-1)
         {
+
+            last_column = -2;
+
             check_if_killed(temp_descriptor, temp_file, index);
             
             flock(temp_descriptor, LOCK_EX);
@@ -178,17 +190,19 @@ int main(int argc, char ** argv) // matrix_multiplier matrix_A matrix_B matrix_C
             char * line = NULL;
             size_t line_size = 0;
 
-            while(getline(&line, &line_size, temp_file) >= 0)
+            
+            while(getline(&line, &line_size, temp_file) > 0)
             {
                 last_column++;
             }
 
-            
             flock(temp_descriptor, LOCK_UN);
-            fflush(stdout);
-            
-           
+
         }
+
+        multiplications++;
+
+
 
         if (strcmp(mode, "shared") == 0)
         {
@@ -207,12 +221,9 @@ int main(int argc, char ** argv) // matrix_multiplier matrix_A matrix_B matrix_C
 
             flock(result_descriptor, LOCK_UN);
 
+
             flock(result_descriptor, LOCK_EX);
-            multiplications++;
-
-        
-            fflush(stdout);
-
+            
             fseek(result_file, 0, 0);
 
             for (int j = 0; j < A_rows; j++) 
@@ -265,40 +276,44 @@ int main(int argc, char ** argv) // matrix_multiplier matrix_A matrix_B matrix_C
                     buf[j] = NULL;
                 }
         
-
             flock(result_descriptor, LOCK_UN);
 
-            flock(temp_descriptor, LOCK_EX);
-            fseek(temp_file, 0, SEEK_END);
-            char str[7];
-            sprintf(str,"%d\n", i);
-            fwrite(str, sizeof(char), strlen(str), temp_file);
-            fflush(result_file);
-            flock(temp_descriptor, LOCK_UN);
+
         }
         else
         {
+
+            
             int len = snprintf(NULL, 0, "/tmp/%d", i) + 1;
             char *path = calloc(len, sizeof(char));
 
-            snprintf(path, len, "/tmp/%d", i);
+            snprintf(path, len, "tmp/%d", i);
 
-            FILE *f = fopen(path, "w");
+            FILE * file = fopen(path, "w");
 
-            if (f == NULL) 
+            if (file == NULL) 
             {
-                printf("Can't open file to write partial result\n");
+                printf("Can't open file\n");
                 exit(multiplications);
             }
 
             for (int j = 0; j < A_rows; j++) 
             {
-                fprintf(f, "%d\n", result_column[j]);
+            
+                fprintf(file, "%d\n", result_column[j]);
             }
 
-            fflush(f);
-            fclose(f);
+            fflush(file);
+            fclose(file);
         }
+
+        flock(temp_descriptor, LOCK_EX);
+        fseek(temp_file, 0, SEEK_END);
+        char str[7];
+        sprintf(str,"%d\n", i);
+        fwrite(str, sizeof(char), strlen(str), temp_file);
+        fflush(temp_file);
+        flock(temp_descriptor, LOCK_UN);
 
          
     }
