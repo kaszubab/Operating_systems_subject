@@ -223,126 +223,131 @@ int main(int argc, char ** argv )
 
     char * temp_name = "temp.txt";
 
-    FILE * tmp = fopen(temp_name,"w");
-
-    for (int i = 0; i < process_count; i++)
-    {
-        fwrite("1\n", sizeof(char), strlen("1\n"), tmp);
-    }
-
-    fwrite("-1\n", sizeof(char), strlen("-1\n"), tmp);
-    fflush(tmp);
-    flock(fileno(tmp), LOCK_UN);
+    
 
     int len = snprintf(NULL, 0, "%d", process_count)+1;
     char step[len];
     snprintf(step, len, "%d", process_count);
 
 
-    for (int i = 0; i < process_count; i++)
+    for (int ccount = 0; ccount < matrix_count; ccount++ )
     {
-        if ((workers[i] = fork()) == 0)
+        FILE * tmp = fopen(temp_name,"w");
+
+        for (int i = 0; i < process_count; i++)
         {
- 
-            int len = snprintf(NULL, 0, "%d", i)+1;
-            char child_id[len];
-            snprintf(child_id, len, "%d", i);
+            fwrite("1\n", sizeof(char), strlen("1\n"), tmp);
+        }
 
-            len = snprintf(NULL, 0, "%d", mat_sizes[0].first_matrix_rows)+1;
-            char A_rows[len];
-            snprintf(A_rows, len, "%d", mat_sizes[0].first_matrix_rows);
+        fwrite("-1\n", sizeof(char), strlen("-1\n"), tmp);
+        fflush(tmp);
+        flock(fileno(tmp), LOCK_UN);
 
-            len = snprintf(NULL, 0, "%d", mat_sizes[0].first_matrix_cols)+1;
-            char A_cols[len];
-            snprintf(A_cols, len, "%d", mat_sizes[0].first_matrix_cols);
+        for (int i = 0; i < process_count; i++)
+        {
+            if ((workers[i] = fork()) == 0)
+            {
+    
+                int len = snprintf(NULL, 0, "%d", i)+1;
+                char child_id[len];
+                snprintf(child_id, len, "%d", i);
 
-            len = snprintf(NULL, 0, "%d", mat_sizes[0].second_matrix_rows)+1;
-            char B_rows[len];
-            snprintf(B_rows, len, "%d", mat_sizes[0].second_matrix_rows);
+                len = snprintf(NULL, 0, "%d", mat_sizes[ccount].first_matrix_rows)+1;
+                char A_rows[len];
+                snprintf(A_rows, len, "%d", mat_sizes[ccount].first_matrix_rows);
 
-            len = snprintf(NULL, 0, "%d", mat_sizes[0].second_matrix_cols)+1;
-            char B_cols[len];
-            snprintf(B_cols, len, "%d", mat_sizes[0].second_matrix_cols);
- 
-            execl("./matrix_multiplier", "./matrix_multiplier", matrices_A[0], matrices_B[0], matrices_C[0], temp_name, child_id, step, mode, A_rows, A_cols, B_rows, B_cols, NULL); 
+                len = snprintf(NULL, 0, "%d", mat_sizes[ccount].first_matrix_cols)+1;
+                char A_cols[len];
+                snprintf(A_cols, len, "%d", mat_sizes[ccount].first_matrix_cols);
+
+                len = snprintf(NULL, 0, "%d", mat_sizes[ccount].second_matrix_rows)+1;
+                char B_rows[len];
+                snprintf(B_rows, len, "%d", mat_sizes[ccount].second_matrix_rows);
+
+                len = snprintf(NULL, 0, "%d", mat_sizes[ccount].second_matrix_cols)+1;
+                char B_cols[len];
+                snprintf(B_cols, len, "%d", mat_sizes[ccount].second_matrix_cols);
+    
+                execl("./matrix_multiplier", "./matrix_multiplier", matrices_A[ccount], matrices_B[ccount], matrices_C[ccount], temp_name, child_id, step, mode, A_rows, A_cols, B_rows, B_cols, NULL); 
+            
+            }
+        }
+
         
-        }
-    }
+        
+        int sleep_time = 50000; //50 ms
+        int timeout = time_to_live * 1000000;
+        int time = 0;
+        int num_files = 0;
 
-    
-    
-    int sleep_time = 50000; //50 ms
-    int timeout = time_to_live * 1000000;
-    int time = 0;
-    int num_files = 0;
+        int multiplications = 0;
 
-    int multiplications = 0;
-
-    for(int i = 0;i<process_count;i++)
-    {
-        while(time < timeout)
+        for(int i = 0;i<process_count;i++)
         {
-            if(waitpid(workers[i], &multiplications, WNOHANG) != 0)
+            while(time < timeout)
             {
-                printf("Process with PID %d performed %d multiplications\n", workers[i], WEXITSTATUS(multiplications));
-                break;
-            } 
-            else 
-            {
-                usleep(sleep_time);
-                time += sleep_time;
-            }
-        }
-
-        if(time >= timeout)
-        {
-            flock(fileno(tmp), LOCK_EX);
-            fseek(tmp, 2 * i *sizeof(char), 0);
-            fprintf(tmp, "0\n");
-            fflush(tmp);
-            flock(fileno(tmp), LOCK_UN);
-
-            waitpid(workers[i], &multiplications, 0);
-            printf("Process with PID %d performed %d multiplications before being killed\n", workers[i], WEXITSTATUS(multiplications));
-        }
-
-        num_files += WEXITSTATUS(multiplications);
-    }
-
-    
-
-    if(strcmp(mode, "non_shared") == 0)
-    {
-        FILE * result_file = fopen(matrices_C[0], "w+");
-
-        if(fork() == 0)
-        {
-            char** params = (char**) calloc(num_files+4, sizeof(char*));
-            params[0] = "/usr/bin/paste"; 
-            params[1] = "-d";
-            params[2] = " ";
-
-            if(result_file == NULL)
-            {
-                printf("Error opening output file\n");
-                exit(1);
+                if(waitpid(workers[i], &multiplications, WNOHANG) != 0)
+                {
+                    printf("Process with PID %d performed %d multiplications\n", workers[i], WEXITSTATUS(multiplications));
+                    break;
+                } 
+                else 
+                {
+                    usleep(sleep_time);
+                    time += sleep_time;
+                }
             }
 
-            dup2(fileno(result_file), 1);
-            int len;
-            for(int i = 0;i<num_files; i++)
+            if(time >= timeout)
             {
-                len = snprintf(NULL, 0, "tmp/%d", i)+1;
-                params[i+3] = calloc(len, sizeof(char));
-                snprintf(params[i+3], len, "tmp/%d", i);
+                flock(fileno(tmp), LOCK_EX);
+                fseek(tmp, 2 * i *sizeof(char), 0);
+                fprintf(tmp, "0\n");
+                fflush(tmp);
+                flock(fileno(tmp), LOCK_UN);
+
+                waitpid(workers[i], &multiplications, 0);
+                printf("Process with PID %d performed %d multiplications before being killed\n", workers[i], WEXITSTATUS(multiplications));
             }
 
-            params[num_files+3] = NULL;
-
-            execv(params[0], params);
-            exit(0);
+            num_files += WEXITSTATUS(multiplications);
         }
-        wait(0);
+
+        
+
+        if(strcmp(mode, "non_shared") == 0)
+        {
+            FILE * result_file = fopen(matrices_C[0], "w+");
+
+            if(fork() == 0)
+            {
+                char** params = (char**) calloc(num_files+4, sizeof(char*));
+                params[0] = "/usr/bin/paste"; 
+                params[1] = "-d";
+                params[2] = " ";
+
+                if(result_file == NULL)
+                {
+                    printf("Error opening output file\n");
+                    exit(1);
+                }
+
+                dup2(fileno(result_file), 1);
+                int len;
+                for(int i = 0;i<num_files; i++)
+                {
+                    len = snprintf(NULL, 0, "tmp/%d", i)+1;
+                    params[i+3] = calloc(len, sizeof(char));
+                    snprintf(params[i+3], len, "tmp/%d", i);
+                }
+
+                params[num_files+3] = NULL;
+
+                execv(params[0], params);
+                exit(0);
+            }
+            wait(0);
+        }
     }
 
     return 0;
