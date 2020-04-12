@@ -1,0 +1,5 @@
+ls -l | wc -l
+ls -l | grep c.* | wc -l
+echo "to jest dowolny napis" | wc -c
+ps -aux | grep root | wc -l
+ls -l
